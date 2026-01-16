@@ -537,6 +537,45 @@
   100% { opacity:.00; transform: scale(1.15); }
 }
 
+
+/* Richiesta #93: Pulse giallo sulle attività di OGGI quando ora <= adesso */
+.item-card.pulse-today{
+  position: relative;
+  overflow: visible;
+}
+.item-card.pulse-today::before,
+.item-card.pulse-today::after{
+  content:"";
+  position:absolute;
+  inset:-6px;
+  border-radius: 18px;
+  pointer-events:none;
+}
+.item-card.pulse-today::before{
+  background: rgba(255, 215, 0, 0.48);
+  filter: blur(0.2px);
+  opacity: .55;
+  transform: scale(1.0);
+  animation: todayPulseRing 1.35s ease-in-out infinite;
+}
+.item-card.pulse-today::after{
+  inset:-10px;
+  background: rgba(255, 215, 0, 0.26);
+  opacity: .42;
+  transform: scale(1.0);
+  animation: todayPulseRing2 1.35s ease-in-out infinite;
+}
+@keyframes todayPulseRing{
+  0%   { opacity:.50; transform: scale(1.00); }
+  60%  { opacity:.16; transform: scale(1.04); }
+  100% { opacity:.00; transform: scale(1.08); }
+}
+@keyframes todayPulseRing2{
+  0%   { opacity:.28; transform: scale(1.00); }
+  60%  { opacity:.09; transform: scale(1.03); }
+  100% { opacity:.00; transform: scale(1.06); }
+}
+
 .triangle-alert .triangle-excl{
   position: relative;
   z-index: 2;
@@ -1036,6 +1075,45 @@ body.modal-lock{ overflow: hidden !important; }
             font-style: italic;
         }
 
+        .btn-duplicate{
+            width:100%;
+            background:#fff3cd;
+            border:2px solid #f0c36d;
+            color:#7a4b00;
+            padding:10px 12px;
+            border-radius:10px;
+            font-weight:700;
+            cursor:pointer;
+            transition:transform .08s ease;
+        }
+        .btn-duplicate:active{ transform:scale(.98); }
+
+        /* Duplica inline (Dettaglio intervento) */
+        .detail-date-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+        .btn-duplicate-inline{
+            background:#fff3cd;
+            border:2px solid #f0c36d;
+            color:#7a4b00;
+            padding:6px 10px;
+            border-radius:10px;
+            font-weight:800;
+            cursor:pointer;
+            white-space:nowrap;
+        }
+        .btn-duplicate-inline:active{ transform:scale(.98); }
+        .dup-group{ min-width:120px; }
+        .duplicate-panel{ padding:16px; }
+        .dup-row{ display:flex; gap:10px; align-items:center; margin:10px 0; }
+        .dup-row input[type=date]{ flex:1; }
+        .dup-row .time-selectors{ display:flex; gap:6px; }
+        .dup-row button{ background:#ffebee; border:1px solid #ef9a9a; color:#b71c1c; border-radius:8px; padding:8px 10px; cursor:pointer; }
+        .dup-actions{ display:flex; gap:10px; margin-top:14px; }
+        .dup-actions .btn-secondary, .dup-actions .btn-primary{ flex:1; }
+        @media(max-width:520px){
+            .dup-row{ flex-direction:column; align-items:stretch; }
+            .dup-row button{ width:100%; }
+        }
+
         .btn-photo-add {
             padding: 10px 15px;
             background: #f5f5f5;
@@ -1442,6 +1520,22 @@ body.modal-lock{ overflow: hidden !important; }
             white-space: nowrap;
         }
 
+        .btn-vedi-foto {
+            padding: 5px 10px;
+            background: #fff6d5;
+            border: 1px solid #f1d28a;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-vedi-foto:hover {
+            background: #ffe9a6;
+            border-color: #e7c370;
+        }
+
         .btn-storico:hover {
             background: #e0e0e0;
             border-color: #bbb;
@@ -1812,6 +1906,9 @@ body.modal-lock{ overflow: hidden !important; }
         #detailModal { z-index: 1200; }
         #formModal { z-index: 1300; }
         #userFormModal { z-index: 1400; }
+        #duplicateModal { z-index: 1500; }
+        #duplicateModal .modal-content { z-index: 1501; }
+
 
         .day-items-list { max-height: 60vh; overflow-y: auto; }
 
@@ -2138,6 +2235,25 @@ button.fake-control-btn{
         </div>
     </div>
 
+    <!-- Duplicate Modal (Richiesta #94) -->
+    <div class="modal" id="duplicateModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">📑 Duplica in più date</h2>
+                <button class="close-btn" onclick="closeModal('duplicateModal')">&times;</button>
+            </div>
+            <div class="duplicate-panel">
+                <div class="form-hint" style="margin-top:0">Scegli le nuove date/ore. Ogni riga creerà un nuovo Intervento/Sopralluogo/AMSA con stato <b>Da Eseguire</b>.</div>
+                <div id="duplicateRows"></div>
+                <button type="button" class="btn-photo-add" style="margin-top:10px" onclick="addDuplicateRow()">➕ Aggiungi riga</button>
+                <div class="dup-actions">
+                    <button class="btn-secondary" onclick="closeModal('duplicateModal')">Annulla</button>
+                    <button class="btn-primary" onclick="confirmDuplicateSave()">✅ Crea duplicati</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Calendar Modal -->
     <div class="modal" id="calendarModal">
         <div class="modal-content">
@@ -2413,6 +2529,21 @@ button.fake-control-btn{
                     if (item) {
                         item.calendarEventId = result.calendarEventId;
                         saveToLocalStorage();
+                    }
+                    // Richiesta #94: aggiorna code/seq se ritornano dallo script GAS
+                    if (result && (result.code || result.seq) && data && data.id) {
+                        const it2 = interventi.find(i => i.id === data.id) || consegne.find(c => c.id === data.id);
+                        if (it2) {
+                            if (result.code) it2.code = result.code;
+                            if (result.seq) it2.seq = result.seq;
+                            // aggiorna campo ID visibile nel form se stiamo modificando lo stesso record
+                            const fid = document.getElementById('formId')?.value;
+                            if (fid && fid === data.id) {
+                                const fc = document.getElementById('formCode');
+                                if (fc && result.code) fc.value = result.code;
+                            }
+                            saveToLocalStorage();
+                        }
                     }
                 }
                 console.log('✅ Google sync success:', action, result);
@@ -2981,6 +3112,48 @@ function formatDateTime(dateStr) {
             return Math.ceil((target - today) / 86400000);
         }
 
+
+        // Richiesta #93: attività OGGI con ora arrivata -> pulse giallo
+        function shouldPulseToday_(item) {
+            try {
+                if (!item) return false;
+                const st = String(item.stato || '').trim().toLowerCase();
+                // solo stati ancora da gestire
+                if (st === 'eseguito' || st === 'non_eseguito' || st === 'pendente') return false;
+
+                const dateStr = String(item.dataIntervento || '').trim();
+                if (!dateStr) return false;
+
+                const d = new Date(dateStr);
+                if (isNaN(d.getTime())) return false;
+
+                const today0 = new Date();
+                today0.setHours(0,0,0,0);
+                const d0 = new Date(d);
+                d0.setHours(0,0,0,0);
+                if (d0.getTime() !== today0.getTime()) return false;
+
+                // se non c'è ora, consideriamo "già dovuto" durante tutta la giornata
+                const t = String(item.oraIntervento || '').trim();
+                if (!t) return true;
+
+                const m = t.match(/^\s*(\d{1,2}):(\d{2})\s*$/);
+                if (!m) return true;
+
+                const hh = parseInt(m[1], 10);
+                const mm = parseInt(m[2], 10);
+                if (Number.isNaN(hh) || Number.isNaN(mm)) return true;
+
+                const now = new Date();
+                const nowMin = now.getHours() * 60 + now.getMinutes();
+                const tMin = hh * 60 + mm;
+
+                return (nowMin >= tMin);
+            } catch (e) {
+                return false;
+            }
+        }
+
         // ============================================
         // INTERVENTI
         // ============================================
@@ -3283,8 +3456,10 @@ if (key !== lastDayKey) {
         if (item.oraIntervento) dateText += ` ⏰ ${item.oraIntervento}`;
         if (item.stato === 'eseguito' && item.dataEsecuzione) dateText = `✅ Eseguito ${formatDate(item.dataEsecuzione)}`;
 
+        const pulseClass = shouldPulseToday_(item) ? 'pulse-today' : '';
+
         out += `
-            <div class="item-card stato-${item.stato.replace(/_/g, '-')}" onclick="showInterventoDetail('${item.id}')">
+            <div class="item-card ${pulseClass} stato-${item.stato.replace(/_/g, '-')}" onclick="showInterventoDetail('${item.id}')">
                 <div class="item-header">
                     <span class="unit-name">${item.unitName}</span>
                     <span class="tipo-badge">${tipoIcon} ${getTipoBaseDisplay(item)}</span>
@@ -3684,6 +3859,9 @@ function showInterventoDetail(id) {
             const item = interventi.find(i => i.id === id);
             if (!item) return;
             if (item.stato === 'pendente' && !isAdmin()) { alert('Non autorizzato.'); return; }
+
+            // Foto presenti? (per bottone "Vedi foto")
+            const hasPhotos = !!(item.photos && item.photos.length > 0);
             
             const icon = (getCategorieIcons(item) || (item.tipoBase === 'Sopralluogo' ? '👁️' : (item.tipoBase === 'AMSA' ? '♻️' : '🔧')));
             const statusIcon = statusIcons[item.stato] || '📋';
@@ -3724,11 +3902,11 @@ function showInterventoDetail(id) {
             }
             
             let html = `
-                <div class="detail-row"><div class="detail-label">Unità</div><div class="detail-value detail-unit-row"><strong>${item.unitName}</strong><button class="btn-storico" onclick="openStoricoUnita('${item.unitName.replace(/'/g, "\\'")}')">📜 Storico</button></div></div>
+                <div class="detail-row"><div class="detail-label">Unità</div><div class="detail-value detail-unit-row"><strong>${item.unitName}</strong><div style="display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;"><button class="btn-storico" onclick="openStoricoUnita('${item.unitName.replace(/'/g, "\\'")}')">📜 Storico</button>${hasPhotos ? `<button class="btn-vedi-foto" onclick="openDetailPhotoGallery(0)">📷 Vedi Foto</button>` : ''}</div></div></div>
                 <div class="detail-row"><div class="detail-label">Tipo</div><div class="detail-value">${tipoIcon} ${getTipoBaseDisplay(item)}</div></div>
                 <div class="detail-row"><div class="detail-label">ID</div><div class="detail-value">${(() => { const c = (item.code || item.interventoNumero || item.numeroIntervento || item.seq || ""); return c ? String(c) : "—"; })()}</div></div>
                 <div class="detail-row"><div class="detail-label">Categoria</div><div class="detail-value"><span class="item-type type-${(getItemCategoryKeys(item)[0] || 'sopralluogo')}">${item.tipoBase === 'Intervento' ? getCategoriePretty(item) : (icon + ' ' + (getCategorieLabel(item) || item.tipoBase))}</span></div></div>
-                <div class="detail-row"><div class="detail-label">Data e Ora</div><div class="detail-value">${dateTimeText}</div></div>
+                <div class="detail-row"><div class="detail-label">Data e Ora</div><div class="detail-value detail-date-row"><span>${dateTimeText}</span><button class="btn-duplicate-inline" onclick="openDuplicateModal('${item.id}')">📑 Duplica</button></div></div>
                 <div class="detail-row"><div class="detail-label">Stato</div><div class="detail-value"><span class="status-badge status-${item.stato.replace(/_/g, '-')}">${statusIcon} ${statusLabels[item.stato]}</span></div></div>
                 ${item.dataEsecuzione ? `<div class="detail-row"><div class="detail-label">Data Esecuzione</div><div class="detail-value">${formatDate(item.dataEsecuzione)}</div></div>` : ''}
                 ${riprogrammazioneHtml}
@@ -4279,7 +4457,7 @@ storicoHtml += '</div>';
             if (item.oraConsegna) dateTimeText += ` alle ${item.oraConsegna}`;
             
             let html = `
-                <div class="detail-row"><div class="detail-label">Unità</div><div class="detail-value detail-unit-row"><strong>${item.unitName}</strong><button class="btn-storico" onclick="openStoricoUnita('${item.unitName.replace(/'/g, "\\'")}')">📜 Storico</button></div></div>
+                <div class="detail-row"><div class="detail-label">Unità</div><div class="detail-value detail-unit-row"><strong>${item.unitName}</strong><div style="display:flex;gap:8px;align-items:center;justify-content:flex-end;"><button class="btn-storico" onclick="openStoricoUnita('${item.unitName.replace(/'/g, "\\'")}')">📜 Storico</button></div></div></div>
                 <div class="detail-row"><div class="detail-label">Data e Ora Prevista</div><div class="detail-value">${dateTimeText}</div></div>
                 <div class="detail-row"><div class="detail-label">Stato</div><div class="detail-value">${statusText}</div></div>
                 ${item.completedDate ? `<div class="detail-row"><div class="detail-label">Data Consegna Effettiva</div><div class="detail-value">${formatDate(item.completedDate)}</div></div>` : ''}
@@ -4599,6 +4777,11 @@ return `
                         <option value="Consegna" ${item && item.tipoBase === 'Consegna' ? 'selected' : ''} ${!canManageConsegne() ? "disabled" : ""}>🔑 Consegna</option>
                     </select>
                 </div>
+                <div class="form-group" id="idGroup">
+                    <label class="form-label">ID</label>
+                    <input type="text" class="form-input" id="formCode" value="${item && item.code ? item.code : ''}" placeholder="(Generato automaticamente)" readonly>
+                    <div class="form-hint">Questo ID corrisponde a <strong>code</strong> (es: INT-0012-A7K4)</div>
+                </div>
                 <div class="form-group" id="categoriaGroup" style="display:${item && item.tipoBase ? 'block' : 'none'};">
                     <label class="form-label">Categorie</label>
                     <div class="category-multi" id="formCategorie">
@@ -4626,6 +4809,10 @@ return `
                             <select id="formOraH">${hourOptions}</select>
                             <select id="formOraM">${minOptions}</select>
                         </div>
+                    </div>
+                    <div class="form-group dup-group" id="dupGroup">
+                        <label class="form-label">&nbsp;</label>
+                        <button type="button" class="btn-duplicate" onclick="openDuplicateModal()">📑 Duplica</button>
                     </div>
                 </div>
                 <div class="form-hint" id="formDateHint">Se non selezioni data/ora, verrà impostato automaticamente oggi +30 min</div>
@@ -4657,6 +4844,10 @@ return `
         function onTipoBaseChange() {
             const tipoBase = document.getElementById('formTipoBase').value;
             const isConsegna = (tipoBase === 'Consegna');
+            const idGroup = document.getElementById('idGroup');
+            const dupGroup = document.getElementById('dupGroup');
+            if (idGroup) idGroup.style.display = isConsegna ? 'none' : 'block';
+            if (dupGroup) dupGroup.style.display = isConsegna ? 'none' : 'block';
             const isAmsa = (tipoBase === 'AMSA');
 
             // Richiesta #79: se selezioni AMSA, imposta automaticamente Unità = "AMSA"
@@ -5858,6 +6049,7 @@ function getPhotosForSave_() {
                     const photoPack = getPhotosForSave_();
                     const newItem = {
                         id: savedItemId,
+                        code: (document.getElementById('formCode') ? document.getElementById('formCode').value : (item && item.code ? item.code : '')),
                         unitName,
                         tipoBase: tipoBaseVal,
                         categorie: selectedCats,
@@ -5898,6 +6090,7 @@ function getPhotosForSave_() {
                     savedItemId = formId || 'CON' + Date.now();
                     const newItem = {
                         id: savedItemId,
+                        code: (document.getElementById('formCode') ? document.getElementById('formCode').value : (item && item.code ? item.code : '')),
                         unitName,
                         deliveryDate: document.getElementById('formData').value,
                         oraConsegna: getFormTime(),
@@ -5967,7 +6160,195 @@ function getPhotosForSave_() {
             }, 300);
         }
 
+        
+
         // ============================================
+        // DUPLICA IN PIU' DATE (Richiesta #94)
+        // ============================================
+        function openDuplicateModal(baseInterventoId = null) {
+            try {
+                // Se chiamata dal dettaglio, usa i valori dell'intervento selezionato
+                const baseItem = baseInterventoId ? (interventi.find(i => i.id === baseInterventoId) || null) : null;
+                window._dupBaseItem = baseItem ? JSON.parse(JSON.stringify(baseItem)) : null;
+                window._dupFromDetail = !!baseItem;
+
+                const tipoBase = baseItem ? String(baseItem.tipoBase || '') : (document.getElementById('formTipoBase')?.value || '');
+                if (!tipoBase || tipoBase === 'Consegna') {
+                    alert('La duplicazione è disponibile solo per Intervento / Sopralluogo / AMSA');
+                    return;
+                }
+
+                const defaults = getDefaultDateTime();
+                const baseDate = baseItem ? (String(baseItem.dataIntervento || '').trim() || defaults.date) : (document.getElementById('formData')?.value || defaults.date);
+                const baseTime = baseItem ? (String(baseItem.oraIntervento || '').trim() || '09:00') : (getFormTime() || `${defaults.hour}:${defaults.min}`);
+                // (Richiesta #97) memorizza ora base per preset nuove righe
+                window._dupBaseTime = baseTime;
+
+
+                // reset righe
+                const rows = document.getElementById('duplicateRows');
+                if (!rows) return;
+                rows.innerHTML = '';
+
+                // default: domani stessa ora
+                const dt = new Date(baseDate);
+                dt.setDate(dt.getDate() + 1);
+                const tomorrow = dt.toISOString().slice(0, 10);
+                addDuplicateRow(tomorrow, baseTime);
+
+                document.getElementById('duplicateModal').style.display = 'block';
+                checkGlobalCloseButton();
+            } catch (e) {
+                console.error('openDuplicateModal error:', e);
+            }
+        }
+
+        function addDuplicateRow(dateVal = '', timeVal = '') {
+            // (Richiesta #97) se aggiungi righe manualmente, usa l'ora dell'intervento base
+            if (!timeVal && window._dupBaseTime) timeVal = window._dupBaseTime;
+
+            const rows = document.getElementById('duplicateRows');
+            if (!rows) return;
+
+            const hour = (timeVal || '').split(':')[0] || '';
+            const min = (timeVal || '').split(':')[1] || '';
+
+            let hourOptions = '<option value="">--</option>';
+            for (let h = 6; h <= 20; h++) {
+                const hs = String(h).padStart(2, '0');
+                hourOptions += `<option value="${hs}" ${hour === hs ? 'selected' : ''}>${hs}</option>`;
+            }
+
+            let minOptions = '<option value="">--</option>';
+            ['00', '15', '30', '45'].forEach(m => {
+                minOptions += `<option value="${m}" ${min === m ? 'selected' : ''}>${m}</option>`;
+            });
+
+            const row = document.createElement('div');
+            row.className = 'dup-row';
+            row.innerHTML = `
+                <input type="date" class="form-input" value="${dateVal || ''}" data-dup-date>
+                <div class="time-selectors">
+                    <select class="form-input" data-dup-h>${hourOptions}</select>
+                    <select class="form-input" data-dup-m>${minOptions}</select>
+                </div>
+                <button type="button" onclick="this.closest('.dup-row').remove()">✖</button>
+            `;
+            rows.appendChild(row);
+        }
+
+        async function confirmDuplicateSave() {
+            if (isProcessing) return;
+
+            // Se duplico dal dettaglio, prendo i dati dall'item base e NON dal form
+            const fromDetail = (window._dupFromDetail === true) && window._dupBaseItem;
+            const baseItem = fromDetail ? window._dupBaseItem : null;
+
+            let tipoBaseVal = fromDetail ? String(baseItem.tipoBase || '') : (document.getElementById('formTipoBase')?.value || '');
+            if (!tipoBaseVal || tipoBaseVal === 'Consegna') {
+                alert('La duplicazione è disponibile solo per Intervento / Sopralluogo / AMSA');
+                return;
+            }
+
+            let unitName = fromDetail ? String(baseItem.unitName || '').trim() : (document.getElementById('formUnitName')?.value.trim() || '');
+            if (!unitName) {
+                alert('Inserisci l\'unità');
+                return;
+            }
+
+            const rows = Array.from(document.querySelectorAll('#duplicateRows .dup-row'));
+            if (!rows.length) {
+                alert('Aggiungi almeno una riga');
+                return;
+            }
+
+            let selectedCats = [];
+            let categoriaText = '';
+            let note = '';
+
+            if (fromDetail) {
+                // categorie/note dal record originale
+                if (Array.isArray(baseItem.categorie)) selectedCats = baseItem.categorie;
+                else {
+                    const raw = String(baseItem.categoria || '').trim();
+                    selectedCats = raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
+                }
+                categoriaText = selectedCats.join(', ');
+                note = String(baseItem.note || '');
+            } else {
+                selectedCats = Array.from(document.querySelectorAll('#formCategorie input[type="checkbox"]:checked')).map(el => el.value);
+                categoriaText = selectedCats.join(', ');
+                note = document.getElementById('formNote')?.value || '';
+            }
+
+            if (tipoBaseVal === 'AMSA') categoriaText = '';
+
+            if (!confirm(`Confermi la duplicazione in ${rows.length} date?`)) return;
+
+            isProcessing = true;
+            showFeedback('Duplicazione...');
+
+            try {
+                for (const r of rows) {
+                    const d = r.querySelector('[data-dup-date]')?.value;
+                    const hh = r.querySelector('[data-dup-h]')?.value;
+                    const mm = r.querySelector('[data-dup-m]')?.value;
+                    if (!d) continue;
+
+                    const oraFallback = fromDetail ? (String(baseItem.oraIntervento || '').trim() || '09:00') : (getFormTime() || '09:00');
+                    const ora = (hh && mm) ? `${hh}:${mm}` : oraFallback;
+
+                    const newId = 'INT' + Date.now() + Math.floor(Math.random() * 1000);
+                    const newItem = {
+                        id: newId,
+                        unitName,
+                        tipoBase: tipoBaseVal,
+                        categorie: (tipoBaseVal === 'AMSA') ? [] : selectedCats,
+                        categoria: (tipoBaseVal === 'AMSA') ? '' : categoriaText,
+                        dataIntervento: d,
+                        oraIntervento: ora,
+                        stato: 'da_eseguire',
+                        note,
+                        photos: [],
+                        photosExisting: [],
+                        hasNewPhotos: false,
+                        dataInserimento: new Date().toISOString()
+                    };
+
+                    // Se duplico dal dettaglio: copia anche alcuni campi utili (senza ID/code/seq/foto)
+                    if (fromDetail) {
+                        // mantieni categoria originale se era un singolo campo
+                        if (baseItem.categoria && !newItem.categoria) newItem.categoria = baseItem.categoria;
+                        if (baseItem.categorie && Array.isArray(baseItem.categorie) && !newItem.categorie.length) newItem.categorie = baseItem.categorie;
+                    }
+
+                    interventi.push(newItem);
+                    addToActivityLog('inserimento', unitName, `Duplicato ${tipoBaseVal} - 📅 ${formatDate(d)} ⏰ ${ora}`);
+
+                    // Sync Google (attendi per avere code/seq corretti in risposta)
+                    if (useGoogleSync) {
+                        await syncToGoogle('saveIntervento', newItem);
+                    }
+                }
+
+                applyFilters();
+                updateCounts();
+                saveAllData();
+                closeModal('duplicateModal');
+                window._dupBaseItem = null;
+                window._dupFromDetail = false;
+                showSuccessAndHide('Duplicato!');
+
+            } catch (e) {
+                console.error('Duplicate error:', e);
+                showFeedback('Errore duplicazione', 'error');
+                setTimeout(hideFeedback, 2200);
+            } finally {
+                isProcessing = false;
+            }
+        }
+
+// ============================================
         // USERS
         // ============================================
         function openUsersModal() {
@@ -6423,6 +6804,12 @@ if (dayInterventi.length === 0 && dayConsegne.length === 0) {
         // ============================================
         function closeModal(id) {
             document.getElementById(id).style.display = 'none';
+
+            // Reset contesto duplicazione quando chiudi il modal
+            if (id === 'duplicateModal') {
+                window._dupBaseItem = null;
+                window._dupFromDetail = false;
+            }
             
             // Ripristina lo z-index dell'overlay arretrati se è ancora visibile
             const overdueOverlay = document.getElementById('overdueOverlay');
