@@ -576,6 +576,39 @@
   100% { opacity:.00; transform: scale(1.06); }
 }
 
+/* Richiesta #97: se oggi ci sono attività che pulsano, pulsa anche l'header "Oggi" */
+.day-group-header.pulse-today-header{
+  position: relative;
+  overflow: visible;
+}
+.day-group-header.pulse-today-header::before,
+.day-group-header.pulse-today-header::after{
+  content:"";
+  position:absolute;
+  left: 10px;
+  right: 10px;
+  top: 4px;
+  bottom: 4px;
+  border-radius: 16px;
+  pointer-events:none;
+}
+.day-group-header.pulse-today-header::before{
+  background: rgba(255, 215, 0, 0.42);
+  opacity: .55;
+  transform: scale(1.0);
+  animation: todayPulseRing 1.35s ease-in-out infinite;
+}
+.day-group-header.pulse-today-header::after{
+  left: 6px;
+  right: 6px;
+  top: 0px;
+  bottom: 0px;
+  background: rgba(255, 215, 0, 0.22);
+  opacity: .42;
+  transform: scale(1.0);
+  animation: todayPulseRing2 1.35s ease-in-out infinite;
+}
+
 .triangle-alert .triangle-excl{
   position: relative;
   z-index: 2;
@@ -3338,6 +3371,46 @@ function formatDateTime(dateStr) {
         return w.data.deliveryDate || w.data.completedDate || '';
     };
 
+    // Richiesta #99: dentro ogni giornata le attività completate vanno in fondo
+    try {
+        const isCompletedWrap = (w) => {
+            if (!w || !w.data) return false;
+            if (w.kind === 'consegna') {
+                const st = String(getConsegnaStato(w.data) || '').toLowerCase();
+                return st === 'consegnato' || (!!w.data.completedDate && String(w.data.completedDate).trim() !== '');
+            }
+            const st = String(w.data.stato || '').toLowerCase();
+            return st === 'eseguito' || st === 'non_eseguito' || st === 'annullato' || st === 'consegnato';
+        };
+
+        const groups = new Map();
+        const order = [];
+
+        for (const w of items) {
+            const ds = getWrapDateStr(w);
+            let k = '__NODATE__';
+            if (ds) {
+                const d = new Date(ds);
+                if (!isNaN(d.getTime())) k = localKey(d);
+            }
+            if (!groups.has(k)) {
+                groups.set(k, { open: [], done: [] });
+                order.push(k);
+            }
+            const g = groups.get(k);
+            (isCompletedWrap(w) ? g.done : g.open).push(w);
+        }
+
+        const reordered = [];
+        for (const k of order) {
+            const g = groups.get(k);
+            reordered.push(...(g.open || []), ...(g.done || []));
+        }
+        items = reordered;
+    } catch (e) {
+        // no-op
+    }
+
     const getDayHeaderText = (dateStr, key) => {
         if (!dateStr || key === '__NODATE__') return 'Senza data';
 
@@ -3357,6 +3430,43 @@ function formatDateTime(dateStr) {
 
     let lastDayKey = null;
     let out = '';
+
+    // Richiesta #97: se oggi ci sono attività che pulsano, deve pulsare anche l'header "Oggi"
+    const todayKeyStr = localKey(today0);
+    let todayHeaderShouldPulse = false;
+    try {
+        for (const w of items) {
+            if (!w || !w.data) continue;
+            const ds = getWrapDateStr(w);
+            if (!ds) continue;
+            const d = new Date(ds);
+            if (isNaN(d.getTime())) continue;
+            const key = localKey(d);
+            if (key !== todayKeyStr) continue;
+
+            if (w.kind === 'intervento') {
+                if (shouldPulseToday_(w.data)) { todayHeaderShouldPulse = true; break; }
+            } else if (w.kind === 'consegna') {
+                const statoC = String(getConsegnaStato(w.data) || '').toLowerCase();
+                if (statoC === 'consegnato' || statoC === 'pendente') continue;
+
+                // Se è oggi e l'ora è arrivata -> consideriamo come "pulsante"
+                const t = String(w.data.oraConsegna || '').trim();
+                if (!t) { todayHeaderShouldPulse = true; break; }
+                const m = t.match(/^\s*(\d{1,2}):(\d{2})\s*$/);
+                if (!m) { todayHeaderShouldPulse = true; break; }
+                const hh = parseInt(m[1], 10);
+                const mm = parseInt(m[2], 10);
+                if (Number.isNaN(hh) || Number.isNaN(mm)) { todayHeaderShouldPulse = true; break; }
+                const now = new Date();
+                const nowMin = now.getHours() * 60 + now.getMinutes();
+                const tMin = hh * 60 + mm;
+                if (nowMin >= tMin) { todayHeaderShouldPulse = true; break; }
+            }
+        }
+    } catch (e) {
+        // no-op
+    }
 
     // Richiesta #79/#82: reset flag header 'Oggi'
     window.__GI_OVERDUE_HEADER_DONE = false;
@@ -3385,7 +3495,8 @@ if (key !== lastDayKey) {
     }
 
     if (isTodayHeader && !window.__GI_OVERDUE_HEADER_DONE) {
-        out += `<div class="day-group-header day-group-header--today"><div class="day-group-row"><div class="day-group-title">${headerText}</div>${getOverdueAlertButtonHtml_()}</div></div>`;
+        const pulseHeaderClass = ''; // Richiesta #99: niente pulsazione sull'header Oggi
+        out += `<div class="day-group-header day-group-header--today${pulseHeaderClass}"><div class="day-group-row"><div class="day-group-title">${headerText}</div>${getOverdueAlertButtonHtml_()}</div></div>`;
         window.__GI_OVERDUE_HEADER_DONE = true;
     } else {
         out += `<div class="day-group-header">${headerText}</div>`;
